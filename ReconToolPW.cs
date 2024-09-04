@@ -1,11 +1,11 @@
 using System;
-using System.IO;
+using System.IO; // For file operations on the local system
 using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows.Forms;
-using Microsoft.SharePoint.Client;
+using Microsoft.SharePoint.Client; // For SharePoint operations
 
 namespace ReconciliationTool
 {
@@ -16,85 +16,6 @@ namespace ReconciliationTool
         public MainForm()
         {
             InitializeComponent();
-        }
-
-        private void InitializeComponent()
-        {
-            this.txtSharedDrivePath = new TextBox();
-            this.txtSharePointPath = new TextBox();
-            this.txtUserName = new TextBox();
-            this.txtPassword = new TextBox();
-            this.btnReconcile = new Button();
-            this.btnSaveLog = new Button();
-            this.txtLog = new RichTextBox();
-            this.progressBar = new ProgressBar();
-
-            this.SuspendLayout();
-
-            // Shared Drive Path TextBox
-            this.txtSharedDrivePath.Location = new System.Drawing.Point(30, 30);
-            this.txtSharedDrivePath.Name = "txtSharedDrivePath";
-            this.txtSharedDrivePath.Size = new System.Drawing.Size(300, 20);
-            this.txtSharedDrivePath.PlaceholderText = "Enter Shared Drive Path";
-
-            // SharePoint Path TextBox
-            this.txtSharePointPath.Location = new System.Drawing.Point(30, 70);
-            this.txtSharePointPath.Name = "txtSharePointPath";
-            this.txtSharePointPath.Size = new System.Drawing.Size(300, 20);
-            this.txtSharePointPath.PlaceholderText = "Enter SharePoint URL";
-
-            // Username TextBox
-            this.txtUserName.Location = new System.Drawing.Point(30, 110);
-            this.txtUserName.Name = "txtUserName";
-            this.txtUserName.Size = new System.Drawing.Size(300, 20);
-            this.txtUserName.PlaceholderText = "Enter SharePoint Username";
-
-            // Password TextBox
-            this.txtPassword.Location = new System.Drawing.Point(30, 150);
-            this.txtPassword.Name = "txtPassword";
-            this.txtPassword.Size = new System.Drawing.Size(300, 20);
-            this.txtPassword.UseSystemPasswordChar = true; // To hide password input
-            this.txtPassword.PlaceholderText = "Enter SharePoint Password";
-
-            // Reconcile Button
-            this.btnReconcile.Location = new System.Drawing.Point(30, 190);
-            this.btnReconcile.Name = "btnReconcile";
-            this.btnReconcile.Size = new System.Drawing.Size(100, 30);
-            this.btnReconcile.Text = "Reconcile";
-            this.btnReconcile.Click += new EventHandler(this.btnReconcile_Click);
-
-            // Save Log Button
-            this.btnSaveLog.Location = new System.Drawing.Point(150, 190);
-            this.btnSaveLog.Name = "btnSaveLog";
-            this.btnSaveLog.Size = new System.Drawing.Size(100, 30);
-            this.btnSaveLog.Text = "Save Log";
-            this.btnSaveLog.Click += new EventHandler(this.btnSaveLog_Click);
-
-            // Log TextBox
-            this.txtLog.Location = new System.Drawing.Point(30, 240);
-            this.txtLog.Name = "txtLog";
-            this.txtLog.Size = new System.Drawing.Size(300, 150);
-            this.txtLog.ReadOnly = true;
-
-            // ProgressBar
-            this.progressBar.Location = new System.Drawing.Point(30, 410);
-            this.progressBar.Name = "progressBar";
-            this.progressBar.Size = new System.Drawing.Size(300, 20);
-
-            // MainForm Settings
-            this.ClientSize = new System.Drawing.Size(380, 450);
-            this.Controls.Add(this.txtSharedDrivePath);
-            this.Controls.Add(this.txtSharePointPath);
-            this.Controls.Add(this.txtUserName);
-            this.Controls.Add(this.txtPassword);
-            this.Controls.Add(this.btnReconcile);
-            this.Controls.Add(this.btnSaveLog);
-            this.Controls.Add(this.txtLog);
-            this.Controls.Add(this.progressBar);
-            this.Name = "MainForm";
-            this.Text = "File Reconciliation Tool";
-            this.ResumeLayout(false);
-            this.PerformLayout();
         }
 
         private void btnReconcile_Click(object sender, EventArgs e)
@@ -116,6 +37,7 @@ namespace ReconciliationTool
                 logBuilder.Clear();
                 txtLog.Clear();
 
+                // Use System.IO.FileInfo explicitly for local file system operations
                 var sharedDriveFiles = GetFilesFromSharedDrive(sharedDrivePath);
                 var sharePointFiles = GetFilesFromSharePoint(sharePointUrl, userName, password);
 
@@ -154,7 +76,8 @@ namespace ReconciliationTool
             }
         }
 
-        private FileInfo[] GetFilesFromSharedDrive(string path)
+        // Use System.IO.FileInfo explicitly for local files
+        private System.IO.FileInfo[] GetFilesFromSharedDrive(string path)
         {
             try
             {
@@ -164,11 +87,12 @@ namespace ReconciliationTool
             {
                 MessageBox.Show($"Error reading shared drive: {ex.Message}");
                 logBuilder.AppendLine($"Error reading shared drive: {ex.Message}");
-                return Array.Empty<FileInfo>();
+                return Array.Empty<System.IO.FileInfo>();
             }
         }
 
-        private FileInfo[] GetFilesFromSharePoint(string sharePointUrl, string userName, string password)
+        // SharePoint-specific file retrieval
+        private SharePointFileInfo[] GetFilesFromSharePoint(string sharePointUrl, string userName, string password)
         {
             try
             {
@@ -187,7 +111,7 @@ namespace ReconciliationTool
                     clientContext.Load(list.RootFolder.Files);
                     clientContext.ExecuteQuery();
 
-                    return list.RootFolder.Files.ToList().Select(f => new FileInfo
+                    return list.RootFolder.Files.ToList().Select(f => new SharePointFileInfo
                     {
                         Name = f.Name,
                         Length = f.Length,
@@ -200,8 +124,39 @@ namespace ReconciliationTool
             {
                 MessageBox.Show($"Error reading SharePoint: {ex.Message}");
                 logBuilder.AppendLine($"Error reading SharePoint: {ex.Message}");
-                return Array.Empty<FileInfo>();
+                return Array.Empty<SharePointFileInfo>();
             }
+        }
+
+        // Definition for CompareFiles function
+        private void CompareFiles(System.IO.FileInfo[] sharedDriveFiles, SharePointFileInfo[] sharePointFiles)
+        {
+            foreach (var localFile in sharedDriveFiles)
+            {
+                progressBar.Value += 1;
+
+                var matchingFile = sharePointFiles.FirstOrDefault(spFile => spFile.Name == localFile.Name);
+                if (matchingFile == null)
+                {
+                    logBuilder.AppendLine($"Missing in SharePoint: {localFile.Name}");
+                    continue;
+                }
+
+                bool isSizeEqual = localFile.Length == matchingFile.Length;
+                bool isDateEqual = localFile.LastWriteTime == matchingFile.LastWriteTime;
+                bool isContentEqual = CompareFileContent(localFile.FullName, matchingFile.FullName);
+
+                if (isSizeEqual && isDateEqual && isContentEqual)
+                {
+                    logBuilder.AppendLine($"Match found: {localFile.Name}");
+                }
+                else
+                {
+                    logBuilder.AppendLine($"Mismatch found: {localFile.Name}");
+                }
+            }
+
+            txtLog.Text = logBuilder.ToString();
         }
 
         private bool CompareFileContent(string filePath1, string filePath2)
@@ -252,7 +207,8 @@ namespace ReconciliationTool
         private ProgressBar progressBar;
     }
 
-    public class FileInfo
+    // Custom class to represent SharePoint file information
+    public class SharePointFileInfo
     {
         public string Name { get; set; }
         public long Length { get; set; }
