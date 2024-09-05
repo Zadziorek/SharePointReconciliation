@@ -10,9 +10,14 @@ namespace ReconciliationTool
 {
     public partial class MainForm : Form
     {
-        // Azure AD details
-        private string clientId = "YOUR_CLIENT_ID";  // Replace with your Azure AD Application ID
-        private string tenantId = "YOUR_TENANT_ID";  // Replace with your Azure AD Tenant ID
+        // Service Principal Details for OAuth
+        private string clientId = "YOUR_CLIENT_ID";         // Replace with your Service Principal Application (Client) ID
+        private string tenantId = "YOUR_TENANT_ID";         // Replace with your Tenant ID
+        private string clientSecret = "YOUR_CLIENT_SECRET"; // Replace with your Client Secret from Azure AD
+
+        // Private Azure Cloud Authority URL (e.g., for Azure Government or Azure China)
+        private string authority = "https://login.microsoftonline.us/{0}/v2.0"; // Adjust for private cloud, replace {0} with your tenantId
+
         private string[] scopes = new[] { "https://graph.microsoft.com/.default" };  // Default scope for Microsoft Graph
 
         // UI Controls
@@ -108,9 +113,9 @@ namespace ReconciliationTool
 
                 txtLog.Clear();
 
-                // Authenticate using SSO (silent login)
-                string accessToken = await GetOAuthAccessTokenSilentAsync();
-                using (ClientContext context = GetPnPContextWithSSO(sharePointUrl, accessToken))
+                // Authenticate using Service Principal (Client Credentials Flow)
+                string accessToken = await GetOAuthAccessTokenServicePrincipalAsync();
+                using (ClientContext context = GetPnPContextWithServicePrincipal(sharePointUrl, accessToken))
                 {
                     // Reconciliation logic goes here, e.g., getting files and comparing
                     var sharedDriveFiles = GetFilesFromSharedDrive(sharedDrivePath);
@@ -152,51 +157,20 @@ namespace ReconciliationTool
             }
         }
 
-        // Function to authenticate and get OAuth Access Token silently using MSAL
-        private async Task<string> GetOAuthAccessTokenSilentAsync()
+        // Function to authenticate and get OAuth Access Token using service principal
+        private async Task<string> GetOAuthAccessTokenServicePrincipalAsync()
         {
-            var app = PublicClientApplicationBuilder.Create(clientId)
-                .WithAuthority(AzureCloudInstance.AzurePublic, tenantId)
-                .WithDefaultRedirectUri()
+            var app = ConfidentialClientApplicationBuilder.Create(clientId)
+                .WithClientSecret(clientSecret)
+                .WithAuthority(new Uri(string.Format(authority, tenantId))) // Private Azure Cloud Authority
                 .Build();
 
-            var accounts = await app.GetAccountsAsync();
-
-            if (accounts.Any())
-            {
-                try
-                {
-                    // Attempt silent authentication with existing account
-                    var result = await app.AcquireTokenSilent(scopes, accounts.FirstOrDefault()).ExecuteAsync();
-                    return result.AccessToken;
-                }
-                catch (MsalUiRequiredException)
-                {
-                    // If silent login fails, fallback to interactive login
-                    return await GetOAuthAccessTokenInteractiveAsync();
-                }
-            }
-            else
-            {
-                // If no accounts found, use interactive login
-                return await GetOAuthAccessTokenInteractiveAsync();
-            }
-        }
-
-        // Fallback for interactive login in case silent login fails
-        private async Task<string> GetOAuthAccessTokenInteractiveAsync()
-        {
-            var app = PublicClientApplicationBuilder.Create(clientId)
-                .WithAuthority(AzureCloudInstance.AzurePublic, tenantId)
-                .WithDefaultRedirectUri()
-                .Build();
-
-            var result = await app.AcquireTokenInteractive(scopes).ExecuteAsync();
+            var result = await app.AcquireTokenForClient(scopes).ExecuteAsync();
             return result.AccessToken;
         }
 
-        // Function to get PnP ClientContext using the OAuth Access Token
-        private ClientContext GetPnPContextWithSSO(string siteUrl, string accessToken)
+        // Function to get PnP ClientContext using the Access Token
+        private ClientContext GetPnPContextWithServicePrincipal(string siteUrl, string accessToken)
         {
             var context = new ClientContext(siteUrl);
             context.ExecutingWebRequest += (sender, e) =>
@@ -257,7 +231,7 @@ namespace ReconciliationTool
                 var matchingFile = sharePointFiles.FirstOrDefault(spFile => spFile.Name == localFile.Name);
                 if (matchingFile == null)
                 {
-                txtLog.AppendText($"Missing in SharePoint: {localFile.Name}\n");
+                    txtLog.AppendText($"Missing in SharePoint: {localFile.Name}\n");
                     continue;
                 }
 
