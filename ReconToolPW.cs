@@ -1,11 +1,16 @@
 using System;
 using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.SharePoint.Client;
 
 namespace DesktopApp
 {
     public partial class MainForm : Form
     {
+        // Placeholder text for text boxes
         private const string localPathPlaceholder = "Enter local folder path";
         private const string sharePointPathPlaceholder = "Enter SharePoint library path";
 
@@ -15,6 +20,7 @@ namespace DesktopApp
             SetupPlaceholders();
         }
 
+        // Setup placeholder behavior for text boxes
         private void SetupPlaceholders()
         {
             // Set placeholder for localPathTextBox
@@ -122,13 +128,52 @@ namespace DesktopApp
                 return;
             }
 
+            // Perform file comparison using CSOM and Windows Integrated Authentication
             await AccessSharePointAndCompareFiles(localPath, sharePointPath);
         }
 
-        // Function to access SharePoint and compare files (same as before)
+        // Function to access SharePoint using CSOM and compare files
         private async Task AccessSharePointAndCompareFiles(string localPath, string sharePointPath)
         {
-            // CSOM logic for SharePoint access and file comparison goes here...
+            try
+            {
+                // Using CSOM to connect to SharePoint Online
+                using (ClientContext context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
+                {
+                    // Use the current Windows credentials to authenticate (Windows Integrated Authentication)
+                    context.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials;
+
+                    // Access the SharePoint document library (replace with actual path)
+                    var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
+                    context.Load(folder.Files);
+                    await context.ExecuteQueryAsync();
+
+                    var sharePointFiles = folder.Files.ToList();
+
+                    // Load local files
+                    var localFiles = Directory.GetFiles(localPath);
+
+                    // Compare files
+                    foreach (var localFile in localFiles)
+                    {
+                        var matchingFile = sharePointFiles.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
+                        if (matchingFile != null)
+                        {
+                            logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
+                        }
+                        else
+                        {
+                            logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
+                        }
+                    }
+
+                    logTextBox.AppendText("File comparison completed.\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                logTextBox.AppendText($"Error: {ex.Message}\n");
+            }
         }
 
         private System.Windows.Forms.TextBox localPathTextBox;
