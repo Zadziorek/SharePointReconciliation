@@ -1,182 +1,63 @@
-using System;
-using System.Drawing;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Microsoft.SharePoint.Client;
-using PnP.Framework;  // Add reference to PnP Framework
-
-namespace DesktopApp
+private async Task AuthenticateAndCompareFiles(string localPath, string sharePointPath)
 {
-    public partial class MainForm : Form
+    try
     {
-        // Placeholder text for text boxes
-        private const string localPathPlaceholder = "Enter local folder path";
-        private const string sharePointPathPlaceholder = "Enter SharePoint library path";
+        // Well-known public client ID for Microsoft apps (e.g., Office 365, SharePoint Online)
+        var clientId = "d3590ed6-52b3-4102-aeff-aad2292ab01c";  
+        var tenantId = "organizations";  // Using "organizations" for multi-tenant authentication
+        var authority = $"https://login.microsoftonline.com/{tenantId}";
 
-        public MainForm()
+        // MSAL Public Client Application for user-interactive authentication
+        var app = PublicClientApplicationBuilder.Create(clientId)
+            .WithAuthority(authority)
+            .WithDefaultRedirectUri()
+            .Build();
+
+        // Scopes needed for SharePoint access
+        string[] scopes = { "https://yourtenant.sharepoint.com/.default" };
+
+        // Acquire token interactively (prompts the user to log in)
+        var result = await app.AcquireTokenInteractive(scopes).ExecuteAsync();
+
+        // Access token acquired
+        string accessToken = result.AccessToken;
+
+        // Use the token to authenticate SharePoint requests
+        using (var context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
         {
-            InitializeComponent();
-            SetupPlaceholders();
-        }
-
-        // Setup placeholder behavior for text boxes
-        private void SetupPlaceholders()
-        {
-            // Set placeholder for localPathTextBox
-            localPathTextBox.Text = localPathPlaceholder;
-            localPathTextBox.ForeColor = Color.Gray;
-            localPathTextBox.GotFocus += RemovePlaceholderLocal;
-            localPathTextBox.LostFocus += SetPlaceholderLocal;
-
-            // Set placeholder for sharePointPathTextBox
-            sharePointPathTextBox.Text = sharePointPathPlaceholder;
-            sharePointPathTextBox.ForeColor = Color.Gray;
-            sharePointPathTextBox.GotFocus += RemovePlaceholderSharePoint;
-            sharePointPathTextBox.LostFocus += SetPlaceholderSharePoint;
-        }
-
-        private void RemovePlaceholderLocal(object sender, EventArgs e)
-        {
-            if (localPathTextBox.Text == localPathPlaceholder)
+            context.ExecutingWebRequest += (sender, e) =>
             {
-                localPathTextBox.Text = "";
-                localPathTextBox.ForeColor = Color.Black;
-            }
-        }
+                e.WebRequestExecutor.WebRequest.Headers["Authorization"] = "Bearer " + accessToken;
+            };
 
-        private void SetPlaceholderLocal(object sender, EventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(localPathTextBox.Text))
+            var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
+            context.Load(folder.Files);
+            await context.ExecuteQueryAsync();
+
+            var sharePointFiles = folder.Files.ToList();
+
+            // Load local files
+            var localFiles = Directory.GetFiles(localPath);
+
+            // Compare files
+            foreach (var localFile in localFiles)
             {
-                localPathTextBox.Text = localPathPlaceholder;
-                localPathTextBox.ForeColor = Color.Gray;
-            }
-        }
-
-        private void RemovePlaceholderSharePoint(object sender, EventArgs e)
-        {
-            if (sharePointPathTextBox.Text == sharePointPathPlaceholder)
-            {
-                sharePointPathTextBox.Text = "";
-                sharePointPathTextBox.ForeColor = Color.Black;
-            }
-        }
-
-        private void SetPlaceholderSharePoint(object sender, EventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(sharePointPathTextBox.Text))
-            {
-                sharePointPathTextBox.Text = sharePointPathPlaceholder;
-                sharePointPathTextBox.ForeColor = Color.Gray;
-            }
-        }
-
-        // Add UI elements in the form's initialization method
-        private void InitializeComponent()
-        {
-            this.localPathTextBox = new System.Windows.Forms.TextBox();
-            this.sharePointPathTextBox = new System.Windows.Forms.TextBox();
-            this.compareButton = new System.Windows.Forms.Button();
-            this.logTextBox = new System.Windows.Forms.TextBox();
-
-            // Set up the form layout
-            this.localPathTextBox.Location = new System.Drawing.Point(20, 20);
-            this.localPathTextBox.Size = new System.Drawing.Size(300, 30);
-
-            this.sharePointPathTextBox.Location = new System.Drawing.Point(20, 70);
-            this.sharePointPathTextBox.Size = new System.Drawing.Size(300, 30);
-
-            this.compareButton.Location = new System.Drawing.Point(20, 120);
-            this.compareButton.Size = new System.Drawing.Size(150, 30);
-            this.compareButton.Text = "Compare Files";
-            this.compareButton.Click += new System.EventHandler(this.CompareFiles_Click);
-
-            this.logTextBox.Location = new System.Drawing.Point(20, 170);
-            this.logTextBox.Size = new System.Drawing.Size(400, 200);
-            this.logTextBox.Multiline = true;
-
-            this.Controls.Add(this.localPathTextBox);
-            this.Controls.Add(this.sharePointPathTextBox);
-            this.Controls.Add(this.compareButton);
-            this.Controls.Add(this.logTextBox);
-
-            this.Text = "File Comparison Tool";
-            this.Size = new System.Drawing.Size(500, 450);
-        }
-
-        // Button click event to start file comparison
-        private async void CompareFiles_Click(object sender, EventArgs e)
-        {
-            string localPath = localPathTextBox.Text;
-            string sharePointPath = sharePointPathTextBox.Text;
-
-            // Check if the text boxes contain the placeholder text, and treat them as empty
-            if (localPath == localPathPlaceholder) localPath = string.Empty;
-            if (sharePointPath == sharePointPathPlaceholder) sharePointPath = string.Empty;
-
-            if (string.IsNullOrEmpty(localPath) || string.IsNullOrEmpty(sharePointPath))
-            {
-                logTextBox.AppendText("Both paths are required.\n");
-                return;
-            }
-
-            // Validate local folder path
-            if (!Directory.Exists(localPath))
-            {
-                logTextBox.AppendText("Invalid local folder path.\n");
-                return;
-            }
-
-            // Perform file comparison using PnP Framework's GetWebLoginClientContext for seamless authentication
-            await AccessSharePointAndCompareFiles(localPath, sharePointPath);
-        }
-
-        // Function to access SharePoint using PnP Framework and compare files
-        private async Task AccessSharePointAndCompareFiles(string localPath, string sharePointPath)
-        {
-            try
-            {
-                // Using PnP Framework to get ClientContext with web login
-                using (ClientContext context = AuthenticationManager.GetWebLoginClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
+                var matchingFile = sharePointFiles.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
+                if (matchingFile != null)
                 {
-                    // Access the SharePoint document library (replace with actual path)
-                    var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
-                    context.Load(folder.Files);
-                    await context.ExecuteQueryAsync();
-
-                    var sharePointFiles = folder.Files.ToList();
-
-                    // Load local files
-                    var localFiles = Directory.GetFiles(localPath);
-
-                    // Compare files
-                    foreach (var localFile in localFiles)
-                    {
-                        var matchingFile = sharePointFiles.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
-                        if (matchingFile != null)
-                        {
-                            logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
-                        }
-                        else
-                        {
-                            logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
-                        }
-                    }
-
-                    logTextBox.AppendText("File comparison completed.\n");
+                    logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
+                }
+                else
+                {
+                    logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
                 }
             }
-            catch (Exception ex)
-            {
-                logTextBox.AppendText($"Error: {ex.Message}\n");
-            }
-        }
 
-        private System.Windows.Forms.TextBox localPathTextBox;
-        private System.Windows.Forms.TextBox sharePointPathTextBox;
-        private System.Windows.Forms.Button compareButton;
-        private System.Windows.Forms.TextBox logTextBox;
+            logTextBox.AppendText("File comparison completed.\n");
+        }
+    }
+    catch (Exception ex)
+    {
+        logTextBox.AppendText($"Error: {ex.Message}\n");
     }
 }
