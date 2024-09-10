@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.SharePoint.Client;
+using PnP.Framework;  // Add reference to PnP Framework
 
 namespace DesktopApp
 {
@@ -128,21 +129,18 @@ namespace DesktopApp
                 return;
             }
 
-            // Perform file comparison using CSOM and Windows Integrated Authentication
+            // Perform file comparison using PnP Framework's GetWebLoginClientContext for seamless authentication
             await AccessSharePointAndCompareFiles(localPath, sharePointPath);
         }
 
-        // Function to access SharePoint using CSOM and compare files
+        // Function to access SharePoint using PnP Framework and compare files
         private async Task AccessSharePointAndCompareFiles(string localPath, string sharePointPath)
         {
             try
             {
-                // Using CSOM to connect to SharePoint Online
-                using (ClientContext context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
+                // Using PnP Framework to get ClientContext with web login
+                using (ClientContext context = AuthenticationManager.GetWebLoginClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
                 {
-                    // Use the current Windows credentials to authenticate (Windows Integrated Authentication)
-                    context.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials;
-
                     // Access the SharePoint document library (replace with actual path)
                     var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
                     context.Load(folder.Files);
