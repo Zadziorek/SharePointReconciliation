@@ -1,49 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Reader</title>
-</head>
-<body>
+var builder = WebApplication.CreateBuilder(args);
 
-    <h2>Select Files for Comparison</h2>
-    <form id="fileForm">
-        <input type="file" id="fileInput" multiple />
-        <br/><br/>
-        <button type="button" onclick="processFiles()">Read Files</button>
-    </form>
+// Configure Azure AD Authentication
+builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
 
-    <div id="fileContents">
-        <!-- File content will be displayed here -->
-    </div>
+var app = builder.Build();
 
-    <script>
-        function processFiles() {
-            const fileInput = document.getElementById('fileInput');
-            const fileContentsDiv = document.getElementById('fileContents');
-            fileContentsDiv.innerHTML = '';  // Clear previous contents
+// Use Authentication and Authorization
+app.UseAuthentication();
+app.UseAuthorization();
 
-            const files = fileInput.files;  // Get the selected files
+app.MapGet("/get-token", async (HttpContext httpContext) =>
+{
+    // Get the access token for the signed-in user
+    var tokenAcquisition = httpContext.RequestServices.GetRequiredService<ITokenAcquisition>();
+    string accessToken = await tokenAcquisition.GetAccessTokenForUserAsync(new[] { "User.Read", "Sites.ReadWrite.All" });
 
-            if (files.length > 0) {
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    const reader = new FileReader();
+    // Redirect to a local URI or custom scheme to pass token to desktop app
+    httpContext.Response.Redirect($"yourdesktopapp://token?access_token={accessToken}");
+});
 
-                    reader.onload = function (e) {
-                        const fileContent = e.target.result;
-                        fileContentsDiv.innerHTML += `<h3>${file.name}</h3><pre>${fileContent}</pre><hr>`;
-                    };
-
-                    // Read the file as text (you can also read it as DataURL, binary, etc.)
-                    reader.readAsText(file);
-                }
-            } else {
-                alert("No files selected!");
-            }
-        }
-    </script>
-
-</body>
-</html>
+app.Run();
