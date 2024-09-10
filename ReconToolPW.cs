@@ -1,35 +1,49 @@
-var builder = WebApplication.CreateBuilder(args);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Reader</title>
+</head>
+<body>
 
-// Add services to the container.
-builder.Services.AddRazorPages();
+    <h2>Select Files for Comparison</h2>
+    <form id="fileForm">
+        <input type="file" id="fileInput" multiple />
+        <br/><br/>
+        <button type="button" onclick="processFiles()">Read Files</button>
+    </form>
 
-// Add Microsoft Identity platform (Azure AD) authentication
-builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
+    <div id="fileContents">
+        <!-- File content will be displayed here -->
+    </div>
 
-// Add authorization policies
-builder.Services.AddAuthorization(options =>
-{
-    options.FallbackPolicy = options.DefaultPolicy;
-});
+    <script>
+        function processFiles() {
+            const fileInput = document.getElementById('fileInput');
+            const fileContentsDiv = document.getElementById('fileContents');
+            fileContentsDiv.innerHTML = '';  // Clear previous contents
 
-var app = builder.Build();
+            const files = fileInput.files;  // Get the selected files
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error");
-    app.UseHsts();
-}
+            if (files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const reader = new FileReader();
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
+                    reader.onload = function (e) {
+                        const fileContent = e.target.result;
+                        fileContentsDiv.innerHTML += `<h3>${file.name}</h3><pre>${fileContent}</pre><hr>`;
+                    };
 
-app.UseRouting();
+                    // Read the file as text (you can also read it as DataURL, binary, etc.)
+                    reader.readAsText(file);
+                }
+            } else {
+                alert("No files selected!");
+            }
+        }
+    </script>
 
-// Add authentication and authorization middleware
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapRazorPages();
-app.Run();
+</body>
+</html>
