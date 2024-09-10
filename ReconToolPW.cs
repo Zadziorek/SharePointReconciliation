@@ -1,44 +1,16 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Windows.Forms;
 using Microsoft.SharePoint.Client;
-using PnP.Framework;
 
 namespace DesktopApp
 {
     public partial class MainForm : Form
     {
-        private string accessToken;
-
         public MainForm()
         {
             InitializeComponent();
-
-            // Listen for the URI activation (e.g., custom URI scheme)
-            AppDomain.CurrentDomain.ProcessExit += HandleRedirectUri;
-        }
-
-        private void HandleRedirectUri(object sender, EventArgs e)
-        {
-            string[] args = Environment.GetCommandLineArgs();
-            foreach (var arg in args)
-            {
-                if (arg.StartsWith("yourdesktopapp://token"))
-                {
-                    var queryParams = new Uri(arg).Query.TrimStart('?').Split('&');
-                    foreach (var param in queryParams)
-                    {
-                        var keyValue = param.Split('=');
-                        if (keyValue[0] == "access_token")
-                        {
-                            accessToken = keyValue[1];
-                            MessageBox.Show("Access Token Received");
-                        }
-                    }
-                }
-            }
         }
 
         // Add UI elements in the form's initialization method
@@ -49,7 +21,7 @@ namespace DesktopApp
             this.compareButton = new System.Windows.Forms.Button();
             this.logTextBox = new System.Windows.Forms.TextBox();
 
-            // Set up the form layout (simplified)
+            // Set up the form layout
             this.localPathTextBox.Location = new System.Drawing.Point(20, 20);
             this.localPathTextBox.Size = new System.Drawing.Size(300, 30);
             this.localPathTextBox.PlaceholderText = "Enter local folder path";
@@ -95,49 +67,51 @@ namespace DesktopApp
                 return;
             }
 
+            // Perform file comparison using CSOM and Windows Integrated Authentication
             await AccessSharePointAndCompareFiles(localPath, sharePointPath);
         }
 
-        // Function to access SharePoint and compare files
+        // Function to access SharePoint using Windows Integrated Authentication and compare files
         private async Task AccessSharePointAndCompareFiles(string localPath, string sharePointPath)
         {
-            if (accessToken == null)
+            try
             {
-                MessageBox.Show("Access token not available.");
-                return;
-            }
-
-            using (ClientContext context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
-            {
-                context.ExecutingWebRequest += (sender, e) =>
+                // Using CSOM to connect to SharePoint Online
+                using (ClientContext context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
                 {
-                    e.WebRequestExecutor.WebRequest.Headers["Authorization"] = "Bearer " + accessToken;
-                };
+                    // Use the current Windows credentials to authenticate (Windows Integrated Authentication)
+                    context.Credentials = System.Net.CredentialCache.DefaultNetworkCredentials;
 
-                // Access the SharePoint document library (replace with actual path)
-                var files = context.Web.GetFolderByServerRelativeUrl(sharePointPath).Files;
-                context.Load(files);
-                await context.ExecuteQueryAsync();
+                    // Access the SharePoint document library (replace with actual path)
+                    var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
+                    context.Load(folder.Files);
+                    await context.ExecuteQueryAsync();
 
-                // Load local files
-                var localFiles = Directory.GetFiles(localPath);
-                
-                // Compare files
-                foreach (var localFile in localFiles)
-                {
-                    var matchingFile = files.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
-                    if (matchingFile != null)
+                    var sharePointFiles = folder.Files.ToList();
+
+                    // Load local files
+                    var localFiles = Directory.GetFiles(localPath);
+
+                    // Compare files
+                    foreach (var localFile in localFiles)
                     {
-                        // Compare file properties (size, modified date, etc.)
-                        logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
+                        var matchingFile = sharePointFiles.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
+                        if (matchingFile != null)
+                        {
+                            logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
+                        }
+                        else
+                        {
+                            logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
+                        }
                     }
-                    else
-                    {
-                        logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
-                    }
+
+                    logTextBox.AppendText("File comparison completed.\n");
                 }
-
-                logTextBox.AppendText("File comparison completed.\n");
+            }
+            catch (Exception ex)
+            {
+                logTextBox.AppendText($"Error: {ex.Message}\n");
             }
         }
 
