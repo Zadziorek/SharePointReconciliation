@@ -1,11 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.SharePoint.Client;
-using OfficeDevPnP.Core;
+using System.Net;
 
 namespace DesktopApp
 {
@@ -17,63 +16,19 @@ namespace DesktopApp
         private int totalFilesAndFolders = 0;
         private int currentProgress = 0;
 
+        // Declare the UI controls
+        private TextBox localPathTextBox;
+        private TextBox sharePointPathTextBox;
+        private Button compareButton;
+        private TextBox logTextBox;
+
         public MainForm()
         {
             InitializeComponent();
             SetupPlaceholders();
         }
 
-        private void SetupPlaceholders()
-        {
-            localPathTextBox.Text = localPathPlaceholder;
-            localPathTextBox.ForeColor = System.Drawing.Color.Gray;
-            localPathTextBox.GotFocus += RemovePlaceholderLocal;
-            localPathTextBox.LostFocus += SetPlaceholderLocal;
-
-            sharePointPathTextBox.Text = sharePointPathPlaceholder;
-            sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
-            sharePointPathTextBox.GotFocus += RemovePlaceholderSharePoint;
-            sharePointPathTextBox.LostFocus += SetPlaceholderSharePoint;
-        }
-
-        private void RemovePlaceholderLocal(object sender, EventArgs e)
-        {
-            if (localPathTextBox.Text == localPathPlaceholder)
-            {
-                localPath
-                localPathTextBox.Text = "";
-                localPathTextBox.ForeColor = System.Drawing.Color.Black;
-            }
-        }
-
-        private void SetPlaceholderLocal(object sender, EventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(localPathTextBox.Text))
-            {
-                localPathTextBox.Text = localPathPlaceholder;
-                localPathTextBox.ForeColor = System.Drawing.Color.Gray;
-            }
-        }
-
-        private void RemovePlaceholderSharePoint(object sender, EventArgs e)
-        {
-            if (sharePointPathTextBox.Text == sharePointPathPlaceholder)
-            {
-                sharePointPathTextBox.Text = "";
-                sharePointPathTextBox.ForeColor = System.Drawing.Color.Black;
-            }
-        }
-
-        private void SetPlaceholderSharePoint(object sender, EventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(sharePointPathTextBox.Text))
-            {
-                sharePointPathTextBox.Text = sharePointPathPlaceholder;
-                sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
-            }
-        }
-
-        // Initialize the form and controls
+        // Initialize UI components
         private void InitializeComponent()
         {
             this.localPathTextBox = new System.Windows.Forms.TextBox();
@@ -117,6 +72,57 @@ namespace DesktopApp
             this.Size = new System.Drawing.Size(500, 450);
         }
 
+        // Set up placeholder texts for the text boxes
+        private void SetupPlaceholders()
+        {
+            localPathTextBox.Text = localPathPlaceholder;
+            localPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            localPathTextBox.GotFocus += RemovePlaceholderLocal;
+            localPathTextBox.LostFocus += SetPlaceholderLocal;
+
+            sharePointPathTextBox.Text = sharePointPathPlaceholder;
+            sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            sharePointPathTextBox.GotFocus += RemovePlaceholderSharePoint;
+            sharePointPathTextBox.LostFocus += SetPlaceholderSharePoint;
+        }
+
+        private void RemovePlaceholderLocal(object sender, EventArgs e)
+        {
+            if (localPath
+            if (localPathTextBox.Text == localPathPlaceholder)
+            {
+                localPathTextBox.Text = "";
+                localPathTextBox.ForeColor = System.Drawing.Color.Black;
+            }
+        }
+
+        private void SetPlaceholderLocal(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(localPathTextBox.Text))
+            {
+                localPathTextBox.Text = localPathPlaceholder;
+                localPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            }
+        }
+
+        private void RemovePlaceholderSharePoint(object sender, EventArgs e)
+        {
+            if (sharePointPathTextBox.Text == sharePointPathPlaceholder)
+            {
+                sharePointPathTextBox.Text = "";
+                sharePointPathTextBox.ForeColor = System.Drawing.Color.Black;
+            }
+        }
+
+        private void SetPlaceholderSharePoint(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(sharePointPathTextBox.Text))
+            {
+                sharePointPathTextBox.Text = sharePointPathPlaceholder;
+                sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            }
+        }
+
         // Triggered when the Compare button is clicked
         private async void CompareFolders_Click(object sender, EventArgs e)
         {
@@ -149,8 +155,8 @@ namespace DesktopApp
             {
                 logTextBox.AppendText("Starting comparison...\n");
 
-                // Authenticate with SharePoint using Integrated Windows Authentication (SSO)
-                using (var context = AuthenticateToSharePoint())
+                // Authenticate with SharePoint using the SharePoint path from the text box
+                using (var context = AuthenticateToSharePoint(sharePointPath))
                 {
                     if (context == null)
                     {
@@ -187,12 +193,10 @@ namespace DesktopApp
         }
 
         // Authenticate to SharePoint using Integrated Windows Authentication (SSO)
-        private ClientContext AuthenticateToSharePoint()
+        private ClientContext AuthenticateToSharePoint(string siteUrl)
         {
             try
             {
-                string siteUrl = "https://yourtenant.sharepoint.com/sites/SiteName";
-
                 var context = new ClientContext(siteUrl)
                 {
                     Credentials = CredentialCache.DefaultNetworkCredentials
@@ -256,10 +260,5 @@ namespace DesktopApp
             currentProgress++;
             progressBar.Value = Math.Min(currentProgress, totalFilesAndFolders);
         }
-
-        private System.Windows.Forms.TextBox localPathTextBox;
-        private System.Windows.Forms.TextBox sharePointPathTextBox;
-        private System.Windows.Forms.Button compareButton;
-        private System.Windows.Forms.TextBox logTextBox;
     }
 }
