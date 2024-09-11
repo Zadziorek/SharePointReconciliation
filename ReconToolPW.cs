@@ -1,63 +1,265 @@
-private async Task AuthenticateAndCompareFiles(string localPath, string sharePointPath)
+using System;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.SharePoint.Client;
+using OfficeDevPnP.Core;
+
+namespace DesktopApp
 {
-    try
+    public partial class MainForm : Form
     {
-        // Well-known public client ID for Microsoft apps (e.g., Office 365, SharePoint Online)
-        var clientId = "d3590ed6-52b3-4102-aeff-aad2292ab01c";  
-        var tenantId = "organizations";  // Using "organizations" for multi-tenant authentication
-        var authority = $"https://login.microsoftonline.com/{tenantId}";
+        private const string localPathPlaceholder = "Enter local/shared drive folder path";
+        private const string sharePointPathPlaceholder = "Enter SharePoint library path";
+        private ProgressBar progressBar;
+        private int totalFilesAndFolders = 0;
+        private int currentProgress = 0;
 
-        // MSAL Public Client Application for user-interactive authentication
-        var app = PublicClientApplicationBuilder.Create(clientId)
-            .WithAuthority(authority)
-            .WithDefaultRedirectUri()
-            .Build();
-
-        // Scopes needed for SharePoint access
-        string[] scopes = { "https://yourtenant.sharepoint.com/.default" };
-
-        // Acquire token interactively (prompts the user to log in)
-        var result = await app.AcquireTokenInteractive(scopes).ExecuteAsync();
-
-        // Access token acquired
-        string accessToken = result.AccessToken;
-
-        // Use the token to authenticate SharePoint requests
-        using (var context = new ClientContext("https://yourtenant.sharepoint.com/sites/SiteName"))
+        public MainForm()
         {
-            context.ExecutingWebRequest += (sender, e) =>
+            InitializeComponent();
+            SetupPlaceholders();
+        }
+
+        private void SetupPlaceholders()
+        {
+            localPathTextBox.Text = localPathPlaceholder;
+            localPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            localPathTextBox.GotFocus += RemovePlaceholderLocal;
+            localPathTextBox.LostFocus += SetPlaceholderLocal;
+
+            sharePointPathTextBox.Text = sharePointPathPlaceholder;
+            sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            sharePointPathTextBox.GotFocus += RemovePlaceholderSharePoint;
+            sharePointPathTextBox.LostFocus += SetPlaceholderSharePoint;
+        }
+
+        private void RemovePlaceholderLocal(object sender, EventArgs e)
+        {
+            if (localPathTextBox.Text == localPathPlaceholder)
             {
-                e.WebRequestExecutor.WebRequest.Headers["Authorization"] = "Bearer " + accessToken;
-            };
+                localPath
+                localPathTextBox.Text = "";
+                localPathTextBox.ForeColor = System.Drawing.Color.Black;
+            }
+        }
 
-            var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
-            context.Load(folder.Files);
-            await context.ExecuteQueryAsync();
+        private void SetPlaceholderLocal(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(localPathTextBox.Text))
+            {
+                localPathTextBox.Text = localPathPlaceholder;
+                localPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            }
+        }
 
-            var sharePointFiles = folder.Files.ToList();
+        private void RemovePlaceholderSharePoint(object sender, EventArgs e)
+        {
+            if (sharePointPathTextBox.Text == sharePointPathPlaceholder)
+            {
+                sharePointPathTextBox.Text = "";
+                sharePointPathTextBox.ForeColor = System.Drawing.Color.Black;
+            }
+        }
 
-            // Load local files
+        private void SetPlaceholderSharePoint(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(sharePointPathTextBox.Text))
+            {
+                sharePointPathTextBox.Text = sharePointPathPlaceholder;
+                sharePointPathTextBox.ForeColor = System.Drawing.Color.Gray;
+            }
+        }
+
+        // Initialize the form and controls
+        private void InitializeComponent()
+        {
+            this.localPathTextBox = new System.Windows.Forms.TextBox();
+            this.sharePointPathTextBox = new System.Windows.Forms.TextBox();
+            this.compareButton = new System.Windows.Forms.Button();
+            this.logTextBox = new System.Windows.Forms.TextBox();
+            this.progressBar = new System.Windows.Forms.ProgressBar();
+
+            // Local folder path TextBox
+            this.localPathTextBox.Location = new System.Drawing.Point(20, 20);
+            this.localPathTextBox.Size = new System.Drawing.Size(300, 30);
+
+            // SharePoint folder path TextBox
+            this.sharePointPathTextBox.Location = new System.Drawing.Point(20, 70);
+            this.sharePointPathTextBox.Size = new System.Drawing.Size(300, 30);
+
+            // Compare button
+            this.compareButton.Location = new System.Drawing.Point(20, 120);
+            this.compareButton.Size = new System.Drawing.Size(150, 30);
+            this.compareButton.Text = "Compare Folders";
+            this.compareButton.Click += new System.EventHandler(this.CompareFolders_Click);
+
+            // Log TextBox
+            this.logTextBox.Location = new System.Drawing.Point(20, 170);
+            this.logTextBox.Size = new System.Drawing.Size(400, 200);
+            this.logTextBox.Multiline = true;
+
+            // Progress bar
+            this.progressBar.Location = new System.Drawing.Point(20, 380);
+            this.progressBar.Size = new System.Drawing.Size(400, 30);
+
+            // Add controls to the form
+            this.Controls.Add(this.localPathTextBox);
+            this.Controls.Add(this.sharePointPathTextBox);
+            this.Controls.Add(this.compareButton);
+            this.Controls.Add(this.logTextBox);
+            this.Controls.Add(this.progressBar);
+
+            // Set form properties
+            this.Text = "Folder Comparison Tool";
+            this.Size = new System.Drawing.Size(500, 450);
+        }
+
+        // Triggered when the Compare button is clicked
+        private async void CompareFolders_Click(object sender, EventArgs e)
+        {
+            string localPath = localPathTextBox.Text;
+            string sharePointPath = sharePointPathTextBox.Text;
+
+            // Reset progress bar and logs
+            progressBar.Value = 0;
+            logTextBox.Clear();
+            totalFilesAndFolders = 0;
+            currentProgress = 0;
+
+            if (localPath == localPathPlaceholder) localPath = string.Empty;
+            if (sharePointPath == sharePointPathPlaceholder) sharePointPath = string.Empty;
+
+            if (string.IsNullOrEmpty(localPath) || string.IsNullOrEmpty(sharePointPath))
+            {
+                logTextBox.AppendText("Both paths are required.\n");
+                return;
+            }
+
+            // Validate local folder path
+            if (!Directory.Exists(localPath))
+            {
+                logTextBox.AppendText("Invalid local folder path.\n");
+                return;
+            }
+
+            try
+            {
+                logTextBox.AppendText("Starting comparison...\n");
+
+                // Authenticate with SharePoint using Integrated Windows Authentication (SSO)
+                using (var context = AuthenticateToSharePoint())
+                {
+                    if (context == null)
+                    {
+                        logTextBox.AppendText("Authentication failed.\n");
+                        return;
+                    }
+
+                    // Get folder information from SharePoint
+                    var folder = context.Web.GetFolderByServerRelativeUrl(sharePointPath);
+                    context.Load(folder);
+                    context.Load(folder.Folders);
+                    context.Load(folder.Files);
+                    await context.ExecuteQueryAsync();
+
+                    // Count total files and folders for progress bar
+                    totalFilesAndFolders = Directory.GetFiles(localPath, "*", SearchOption.AllDirectories).Length +
+                                           Directory.GetDirectories(localPath, "*", SearchOption.AllDirectories).Length;
+
+                    totalFilesAndFolders += folder.Files.Count + folder.Folders.Count;
+
+                    // Set progress bar max value
+                    progressBar.Maximum = totalFilesAndFolders;
+
+                    // Compare folders and files
+                    await CompareLocalAndSharePointFolders(localPath, folder, context);
+                }
+
+                logTextBox.AppendText("Comparison completed.\n");
+            }
+            catch (Exception ex)
+            {
+                logTextBox.AppendText($"Error: {ex.Message}\n");
+            }
+        }
+
+        // Authenticate to SharePoint using Integrated Windows Authentication (SSO)
+        private ClientContext AuthenticateToSharePoint()
+        {
+            try
+            {
+                string siteUrl = "https://yourtenant.sharepoint.com/sites/SiteName";
+
+                var context = new ClientContext(siteUrl)
+                {
+                    Credentials = CredentialCache.DefaultNetworkCredentials
+                };
+
+                return context;
+            }
+            catch (Exception ex)
+            {
+                logTextBox.AppendText($"Authentication error: {ex.Message}\n");
+                return null;
+            }
+        }
+
+        // Recursive function to compare local and SharePoint folder structures
+        private async Task CompareLocalAndSharePointFolders(string localPath, Folder sharePointFolder, ClientContext context)
+        {
+            // Compare files in current folder
             var localFiles = Directory.GetFiles(localPath);
-
-            // Compare files
             foreach (var localFile in localFiles)
             {
-                var matchingFile = sharePointFiles.FirstOrDefault(f => f.Name == Path.GetFileName(localFile));
+                var fileName = Path.GetFileName(localFile);
+                var matchingFile = sharePointFolder.Files.FirstOrDefault(f => f.Name == fileName);
                 if (matchingFile != null)
                 {
-                    logTextBox.AppendText($"Found matching file: {matchingFile.Name}\n");
+                    logTextBox.AppendText($"File exists in both: {fileName}\n");
                 }
                 else
                 {
-                    logTextBox.AppendText($"File not found in SharePoint: {Path.GetFileName(localFile)}\n");
+                    logTextBox.AppendText($"File missing in SharePoint: {fileName}\n");
                 }
+
+                UpdateProgress();
             }
 
-            logTextBox.AppendText("File comparison completed.\n");
+            // Compare folders in current folder
+            var localFolders = Directory.GetDirectories(localPath);
+            foreach (var localFolder in localFolders)
+            {
+                var folderName = Path.GetFileName(localFolder);
+                var matchingFolder = sharePointFolder.Folders.FirstOrDefault(f => f.Name == folderName);
+                if (matchingFolder != null)
+                {
+                    logTextBox.AppendText($"Folder exists in both: {folderName}\n");
+
+                    // Recursive call for sub-folders
+                    await CompareLocalAndSharePointFolders(localFolder, matchingFolder, context);
+                }
+                else
+                {
+                    logTextBox.AppendText($"Folder missing in SharePoint: {folderName}\n");
+                }
+
+                UpdateProgress();
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        logTextBox.AppendText($"Error: {ex.Message}\n");
+
+        // Update progress bar as the comparison progresses
+        private void UpdateProgress()
+        {
+            currentProgress++;
+            progressBar.Value = Math.Min(currentProgress, totalFilesAndFolders);
+        }
+
+        private System.Windows.Forms.TextBox localPathTextBox;
+        private System.Windows.Forms.TextBox sharePointPathTextBox;
+        private System.Windows.Forms.Button compareButton;
+        private System.Windows.Forms.TextBox logTextBox;
     }
 }
