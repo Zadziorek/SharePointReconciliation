@@ -98,3 +98,54 @@ Write-Host $message
 
 # Optionally, log the message to a file
 Add-Content -Path $logOutputPath -Value $message
+
+
+# ... [Previous script code that extracts $desiredNumber] ...
+
+if ($desiredNumber) {
+    $message = "$(Get-Date) - Extracted number: $desiredNumber"
+
+    # Path to the documents list file
+    $documentsFilePath = "C:\path\to\your\documents.txt"
+
+    # Backup the documents file
+    Copy-Item -Path $documentsFilePath -Destination "${documentsFilePath}.bak" -Force
+
+    # Read all lines from the documents file
+    $allLines = Get-Content -Path $documentsFilePath
+
+    # Initialize index variable
+    $index = -1
+
+    # Iterate over each line to find the line containing the desired number
+    for ($i = 0; $i -lt $allLines.Count; $i++) {
+        $line = $allLines[$i]
+        $fields = $line -split '\s+'
+        if ($fields.Count -ge 3) {
+            $numberField = $fields[2]
+            $subFields = $numberField -split ';'
+            $lineNumber = $subFields[0]
+            if ($lineNumber -eq $desiredNumber) {
+                $index = $i
+                break
+            }
+        }
+    }
+
+    if ($index -ge 0) {
+        $remainingLines = $allLines[$index..($allLines.Count - 1)]
+        Set-Content -Path $documentsFilePath -Value $remainingLines
+        $message += "`n$(Get-Date) - Updated documents file. Lines before '$desiredNumber' have been removed."
+    } else {
+        $message += "`n$(Get-Date) - The extracted number '$desiredNumber' was not found in the documents file."
+    }
+} else {
+    $message = "$(Get-Date) - Failed to extract the number from the line."
+}
+
+# Output the message
+Write-Host $message
+
+# Optionally, log the message to a file
+# $logOutputPath = "C:\path\to\your\output.log"
+# Add-Content -Path $logOutputPath -Value $message
