@@ -1,6 +1,15 @@
 # Path to the log file
 $logFilePath = "C:\path\to\your\logfile.log"
 
+# Path to the output log file (optional)
+$logOutputPath = "C:\path\to\your\output.log"
+
+# Number of lines to consider
+$lineCount = 1000
+
+# Read the last 1000 lines from the log file
+$lastLines = Get-Content -Path $logFilePath -Tail $lineCount
+
 # Function to extract the desired number
 function Extract-Number {
     param($line)
@@ -18,36 +27,41 @@ function Extract-Number {
     }
 }
 
-# Monitor the log file for changes
-Get-Content -Path $logFilePath -Wait | ForEach-Object {
-    $line = $_
+# Check if "Application error" is present in the last 1000 lines
+$applicationErrorLines = $lastLines | Select-String -Pattern "Application error"
 
-    # Check for "Application error"
-    if ($line -match "Application error") {
-        # Read all lines up to the current point
-        $allLines = Get-Content -Path $logFilePath
-
-        # Find the index of the last occurrence of "RAVN URL"
-        $lastRavnIndex = -1
-        for ($i = $allLines.Count - 1; $i -ge 0; $i--) {
-            if ($allLines[$i] -match "RAVN URL") {
-                $lastRavnIndex = $i
-                break
-            }
-        }
-
-        if ($lastRavnIndex -gt 0) {
-            # Get the line before the "RAVN URL" line
-            $lineOfInterest = $allLines[$lastRavnIndex - 1]
-            # Extract the number
-            $desiredNumber = Extract-Number $lineOfInterest
-            if ($desiredNumber) {
-                Write-Host "Extracted number: $desiredNumber"
-            } else {
-                Write-Host "Failed to extract the number from the line."
-            }
-        } else {
-            Write-Host "No 'RAVN URL' line found before 'Application error'."
+if ($applicationErrorLines) {
+    # "Application error" found
+    # Find the index of the last occurrence of "RAVN URL" in the last 1000 lines
+    $lastRavnIndex = -1
+    for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
+        if ($lastLines[$i] -match "RAVN URL") {
+            $lastRavnIndex = $i
+            break
         }
     }
+
+    if ($lastRavnIndex -gt 0) {
+        # Get the line before the "RAVN URL" line
+        $lineOfInterest = $lastLines[$lastRavnIndex - 1]
+        # Extract the number
+        $desiredNumber = Extract-Number $lineOfInterest
+        if ($desiredNumber) {
+            $message = "$(Get-Date) - Extracted number: $desiredNumber"
+        } else {
+            $message = "$(Get-Date) - Failed to extract the number from the line."
+        }
+    } else {
+        $message = "$(Get-Date) - No 'RAVN URL' line found in the last $lineCount lines."
+    }
+} else {
+    # "Application error" not found
+    $message = "$(Get-Date) - Everything is fine."
 }
+
+# Output the message
+Write-Host $message
+
+# Optionally, log the message to a file
+# Uncomment the following line to enable logging
+# Add-Content -Path $logOutputPath -Value $message
