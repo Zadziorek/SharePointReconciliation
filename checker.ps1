@@ -1,9 +1,6 @@
 # Path to the log file
 $logFilePath = "C:\path\to\your\logfile.log"
 
-# Path to the output log file (optional)
-$logOutputPath = "C:\path\to\your\output.log"
-
 # Number of lines to consider
 $lineCount = 1000
 
@@ -27,14 +24,20 @@ function Extract-Number {
     }
 }
 
-# Check if "Application error" is present in the last 1000 lines
-$applicationErrorLines = $lastLines | Select-String -Pattern "Application error"
+# Find the index of the last occurrence of "Application error"
+$appErrorIndex = -1
+for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
+    if ($lastLines[$i] -match "Application error") {
+        $appErrorIndex = $i
+        break
+    }
+}
 
-if ($applicationErrorLines) {
+if ($appErrorIndex -ge 0) {
     # "Application error" found
-    # Find the index of the last occurrence of "RAVN URL" in the last 1000 lines
+    # Now search backwards from $appErrorIndex - 1 for "RAVN URL"
     $lastRavnIndex = -1
-    for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
+    for ($i = $appErrorIndex - 1; $i -ge 0; $i--) {
         if ($lastLines[$i] -match "RAVN URL") {
             $lastRavnIndex = $i
             break
@@ -52,7 +55,7 @@ if ($applicationErrorLines) {
             $message = "$(Get-Date) - Failed to extract the number from the line."
         }
     } else {
-        $message = "$(Get-Date) - No 'RAVN URL' line found in the last $lineCount lines."
+        $message = "$(Get-Date) - No 'RAVN URL' line found before 'Application error' in the last $lineCount lines."
     }
 } else {
     # "Application error" not found
@@ -64,4 +67,5 @@ Write-Host $message
 
 # Optionally, log the message to a file
 # Uncomment the following line to enable logging
+# $logOutputPath = "C:\path\to\your\output.log"
 # Add-Content -Path $logOutputPath -Value $message
