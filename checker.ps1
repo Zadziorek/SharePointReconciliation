@@ -108,3 +108,64 @@ Write-Host $message
 # Optionally, log the message to a file
 # $logOutputPath = "C:\path\to\your\output.log"
 # Add-Content -Path $logOutputPath -Value $message
+
+
+# Path to the large input file
+$inputFilePath = "C:\path\to\your\PRIO0.txt"
+
+# Number of parts to split into
+$parts = 10
+
+# Output file name prefix
+$outputFilePrefix = "PRIO0_Part"
+
+# Output directory (ensure this directory exists)
+$outputDirectory = "C:\path\to\your\output\directory"
+
+# Read the total number of lines in the input file efficiently
+$lineCount = 0
+$reader = [System.IO.StreamReader]::new($inputFilePath)
+try {
+    while ($null -ne $reader.ReadLine()) {
+        $lineCount++
+    }
+} finally {
+    $reader.Close()
+}
+
+# Calculate the number of lines per part
+$linesPerPart = [Math]::Ceiling($lineCount / $parts)
+
+# Initialize variables
+$currentPart = 1
+$currentLine = 0
+$reader = [System.IO.StreamReader]::new($inputFilePath)
+
+try {
+    while (-not $reader.EndOfStream -and $currentPart -le $parts) {
+        # Create a new output file for each part
+        $outputFilePath = Join-Path -Path $outputDirectory -ChildPath "$outputFilePrefix$currentPart.txt"
+        $writer = [System.IO.StreamWriter]::new($outputFilePath, $false)
+        try {
+            # Write lines to the output file
+            for ($i = 1; $i -le $linesPerPart; $i++) {
+                if (-not $reader.EndOfStream) {
+                    $line = $reader.ReadLine()
+                    $writer.WriteLine($line)
+                    $currentLine++
+                } else {
+                    break
+                }
+            }
+        } finally {
+            $writer.Close()
+        }
+        Write-Host "Created file: $outputFilePath with $i lines"
+        $currentPart++
+    }
+} finally {
+    $reader.Close()
+}
+
+Write-Host "Splitting complete. Total lines processed: $currentLine"
+
