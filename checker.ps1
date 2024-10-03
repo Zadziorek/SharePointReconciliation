@@ -7,9 +7,6 @@ $documentsFilePath = "C:\path\to\your\documents.txt"
 # Number of lines to consider
 $lineCount = 1000
 
-# Read the last 1000 lines from the log file
-$lastLines = Get-Content -Path $logFilePath -Tail $lineCount
-
 # Function to extract the data field
 function Extract-DataField {
     param($line)
@@ -24,76 +21,85 @@ function Extract-DataField {
     }
 }
 
-# Find the index of the last occurrence of "Application error"
-$appErrorIndex = -1
-for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
-    if ($lastLines[$i] -match "Application error") {
-        $appErrorIndex = $i
-        break
-    }
-}
+# Read the last $lineCount lines from the log file efficiently
+$lastLines = Get-Content -Path $logFilePath -Tail $lineCount
 
-if ($appErrorIndex -ge 0) {
-    # "Application error" found
-    # Now search backwards from $appErrorIndex - 1 for "RAVN URL"
-    $lastRavnIndex = -1
-    for ($i = $appErrorIndex - 1; $i -ge 0; $i--) {
-        if ($lastLines[$i] -match "RAVN URL") {
-            $lastRavnIndex = $i
+# Initialize variables
+$desiredDataField = $null
+$appErrorFound = $false
+
+# Process the log file to extract the desired data field
+for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
+    $line = $lastLines[$i]
+
+    if (-not $appErrorFound -and $line -match "Application error") {
+        # Found "Application error"
+        $appErrorIndex = $i
+        $appErrorFound = $true
+        continue
+    }
+
+    if ($appErrorFound -and $line -match "RAVN URL") {
+        # Found "RAVN URL" before "Application error"
+        if ($i -gt 0) {
+            # Get the line before "RAVN URL"
+            $lineOfInterest = $lastLines[$i - 1]
+            $desiredDataField = Extract-DataField $lineOfInterest
             break
         }
     }
+}
 
-    if ($lastRavnIndex -gt 0) {
-        # Get the line before the "RAVN URL" line
-        $lineOfInterest = $lastLines[$lastRavnIndex - 1]
-        # Extract the data field
-        $desiredDataField = Extract-DataField $lineOfInterest
-        if ($desiredDataField) {
-            $message = "$(Get-Date) - Extracted data field: $desiredDataField"
+if ($desiredDataField) {
+    $message = "$(Get-Date) - Extracted data field: $desiredDataField"
 
-            # Backup the documents file
-            Copy-Item -Path $documentsFilePath -Destination "${documentsFilePath}.bak" -Force
+    # Backup the documents file
+    Copy-Item -Path $documentsFilePath -Destination "${documentsFilePath}.bak" -Force
 
-            # Read all lines from the documents file
-            $allDocLines = Get-Content -Path $documentsFilePath
+    # Open the documents file for reading and writing line by line
+    $found = $false
+    $tempFilePath = "${documentsFilePath}.tmp"
 
-            # Initialize index variable
-            $index = -1
+    # Use FileStreams for efficient file I/O
+    $docFileReader = [System.IO.StreamReader]::new($documentsFilePath)
+    $docFileWriter = [System.IO.StreamWriter]::new($tempFilePath, $false)
 
-            # Iterate through all lines to find the first occurrence of the desired data field
-            for ($i = 0; $i -lt $allDocLines.Count; $i++) {
-                $docLine = $allDocLines[$i]
+    try {
+        while (($docLine = $docFileReader.ReadLine()) -ne $null) {
+            if (-not $found) {
                 # Extract the data field from the documents line
                 $docFields = $docLine -split '\s+'
                 if ($docFields.Count -ge 3) {
                     $docDataField = $docFields[2]
                     if ($docDataField -eq $desiredDataField) {
-                        $index = $i
-                        break
+                        $found = $true
+                        # Write the matched line to the temp file
+                        $docFileWriter.WriteLine($docLine)
+                        continue
                     }
                 }
-            }
-
-            if ($index -ge 0) {
-                # Get all lines from the index (including the matched line) to the end
-                $remainingLines = $allDocLines[$index..($allDocLines.Count - 1)]
-                # Write the remaining lines back to the file
-                Set-Content -Path $documentsFilePath -Value $remainingLines
-
-                $message += "`n$(Get-Date) - Updated documents file. Lines before the matched data field have been removed."
+                # Do not write lines before the match
             } else {
-                $message += "`n$(Get-Date) - The extracted data field was not found in the documents file."
+                # After the match has been found, write the remaining lines
+                $docFileWriter.WriteLine($docLine)
             }
-        } else {
-            $message = "$(Get-Date) - Failed to extract the data field from the line."
         }
+    } finally {
+        $docFileReader.Close()
+        $docFileWriter.Close()
+    }
+
+    if ($found) {
+        # Replace the original documents file with the temp file
+        Move-Item -Path $tempFilePath -Destination $documentsFilePath -Force
+        $message += "`n$(Get-Date) - Updated documents file. Lines before the matched data field have been removed."
     } else {
-        $message = "$(Get-Date) - No 'RAVN URL' line found before 'Application error' in the last $lineCount lines."
+        # If the data field was not found, delete the temp file
+        Remove-Item -Path $tempFilePath -Force
+        $message += "`n$(Get-Date) - The extracted data field was not found in the documents file."
     }
 } else {
-    # "Application error" not found
-    $message = "$(Get-Date) - Everything is fine."
+    $message = "$(Get-Date) - Failed to extract the data field from the log file."
 }
 
 # Output the message
