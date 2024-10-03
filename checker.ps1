@@ -4,27 +4,21 @@ $logFilePath = "C:\path\to\your\logfile.log"
 # Path to the documents list file
 $documentsFilePath = "C:\path\to\your\documents.txt"
 
-# Path to the output log file (optional)
-$logOutputPath = "C:\path\to\your\output.log"
-
 # Number of lines to consider
 $lineCount = 1000
 
 # Read the last 1000 lines from the log file
 $lastLines = Get-Content -Path $logFilePath -Tail $lineCount
 
-# Function to extract the desired number
-function Extract-Number {
+# Function to extract the data field
+function Extract-DataField {
     param($line)
     # Split the line by spaces
     $fields = $line -split '\s+'
     if ($fields.Count -ge 3) {
-        # The third field contains the number and other data
-        $numberField = $fields[2]
-        # Split by semicolons
-        $subFields = $numberField -split ';'
-        # The first element is the desired number
-        return $subFields[0]
+        # The third field contains the data field
+        $dataField = $fields[2]
+        return $dataField
     } else {
         return $null
     }
@@ -53,37 +47,46 @@ if ($appErrorIndex -ge 0) {
     if ($lastRavnIndex -gt 0) {
         # Get the line before the "RAVN URL" line
         $lineOfInterest = $lastLines[$lastRavnIndex - 1]
-        # Extract the number
-        $desiredNumber = Extract-Number $lineOfInterest
-        if ($desiredNumber) {
-            $message = "$(Get-Date) - Extracted number: $desiredNumber"
+        # Extract the data field
+        $desiredDataField = Extract-DataField $lineOfInterest
+        if ($desiredDataField) {
+            $message = "$(Get-Date) - Extracted data field: $desiredDataField"
 
             # Backup the documents file
             Copy-Item -Path $documentsFilePath -Destination "${documentsFilePath}.bak" -Force
 
             # Read all lines from the documents file
-            $allLines = Get-Content -Path $documentsFilePath
+            $allDocLines = Get-Content -Path $documentsFilePath
 
-            # Find the index of the line that contains the extracted number
-            $index = $allLines.IndexOf($desiredNumber)
+            # Initialize index variable
+            $index = -1
+
+            # Iterate through all lines to find the first occurrence of the desired data field
+            for ($i = 0; $i -lt $allDocLines.Count; $i++) {
+                $docLine = $allDocLines[$i]
+                # Extract the data field from the documents line
+                $docFields = $docLine -split '\s+'
+                if ($docFields.Count -ge 3) {
+                    $docDataField = $docFields[2]
+                    if ($docDataField -eq $desiredDataField) {
+                        $index = $i
+                        break
+                    }
+                }
+            }
 
             if ($index -ge 0) {
-                # Get all lines from the index (including the line with the extracted number) to the end
-                $remainingLines = $allLines[$index..($allLines.Count - 1)]
-
+                # Get all lines from the index (including the matched line) to the end
+                $remainingLines = $allDocLines[$index..($allDocLines.Count - 1)]
                 # Write the remaining lines back to the file
                 Set-Content -Path $documentsFilePath -Value $remainingLines
 
-                $message += "`n$(Get-Date) - Updated documents file. Lines before '$desiredNumber' have been removed."
-
-                # Optionally, log the changes
-                $logMessage = "$(Get-Date) - Removed lines before '$desiredNumber' from documents.txt"
-                Add-Content -Path $logOutputPath -Value $logMessage
+                $message += "`n$(Get-Date) - Updated documents file. Lines before the matched data field have been removed."
             } else {
-                $message += "`n$(Get-Date) - The extracted number '$desiredNumber' was not found in the documents file."
+                $message += "`n$(Get-Date) - The extracted data field was not found in the documents file."
             }
         } else {
-            $message = "$(Get-Date) - Failed to extract the number from the line."
+            $message = "$(Get-Date) - Failed to extract the data field from the line."
         }
     } else {
         $message = "$(Get-Date) - No 'RAVN URL' line found before 'Application error' in the last $lineCount lines."
@@ -91,56 +94,6 @@ if ($appErrorIndex -ge 0) {
 } else {
     # "Application error" not found
     $message = "$(Get-Date) - Everything is fine."
-}
-
-# Output the message
-Write-Host $message
-
-# Optionally, log the message to a file
-Add-Content -Path $logOutputPath -Value $message
-
-
-# ... [Previous script code that extracts $desiredNumber] ...
-
-if ($desiredNumber) {
-    $message = "$(Get-Date) - Extracted number: $desiredNumber"
-
-    # Path to the documents list file
-    $documentsFilePath = "C:\path\to\your\documents.txt"
-
-    # Backup the documents file
-    Copy-Item -Path $documentsFilePath -Destination "${documentsFilePath}.bak" -Force
-
-    # Read all lines from the documents file
-    $allLines = Get-Content -Path $documentsFilePath
-
-    # Initialize index variable
-    $index = -1
-
-    # Iterate over each line to find the line containing the desired number
-    for ($i = 0; $i -lt $allLines.Count; $i++) {
-        $line = $allLines[$i]
-        $fields = $line -split '\s+'
-        if ($fields.Count -ge 3) {
-            $numberField = $fields[2]
-            $subFields = $numberField -split ';'
-            $lineNumber = $subFields[0]
-            if ($lineNumber -eq $desiredNumber) {
-                $index = $i
-                break
-            }
-        }
-    }
-
-    if ($index -ge 0) {
-        $remainingLines = $allLines[$index..($allLines.Count - 1)]
-        Set-Content -Path $documentsFilePath -Value $remainingLines
-        $message += "`n$(Get-Date) - Updated documents file. Lines before '$desiredNumber' have been removed."
-    } else {
-        $message += "`n$(Get-Date) - The extracted number '$desiredNumber' was not found in the documents file."
-    }
-} else {
-    $message = "$(Get-Date) - Failed to extract the number from the line."
 }
 
 # Output the message
