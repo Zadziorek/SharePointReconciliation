@@ -26,14 +26,22 @@ $lastLines = Get-Content -Path $logFilePath -Tail $lineCount
 
 # Initialize variables
 $desiredDataField = $null
+$appErrorFound = $false
 $dataTransferredFound = $false
 
-# Process the log file to find "Data Transferred" and then "RAVN URL" after it
+# Process the log file to find "Application error", then "Data Transferred", and then "RAVN URL"
 for ($i = 0; $i -lt $lastLines.Count; $i++) {
     $line = $lastLines[$i]
 
-    if (-not $dataTransferredFound -and $line -match "Data Transferred") {
-        # Found "Data Transferred"
+    if (-not $appErrorFound -and $line -match "Application error") {
+        # Found "Application error"
+        $appErrorIndex = $i
+        $appErrorFound = $true
+        continue
+    }
+
+    if ($appErrorFound -and -not $dataTransferredFound -and $line -match "Data Transferred") {
+        # Found "Data Transferred" after "Application error"
         $dataTransferredIndex = $i
         $dataTransferredFound = $true
         continue
