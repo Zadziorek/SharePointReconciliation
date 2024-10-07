@@ -1,13 +1,13 @@
 # Path to the log file
 $logFilePath = "C:\path\to\your\logfile.log"
 
-# Path to the documents list file
-$documentsFilePath = "C:\path\to\your\documents.txt"
+# Path to the documents list file (PRIO0.txt)
+$documentsFilePath = "C:\path\to\your\PRIO0.txt"
 
-# Number of lines to consider
-$lineCount = 1000
+# Number of lines to consider from the log file
+$lineCount = 1000  # Adjust as necessary
 
-# Function to extract the data field
+# Function to extract the data field from the log line
 function Extract-DataField {
     param($line)
     # Split the line by spaces
@@ -21,26 +21,26 @@ function Extract-DataField {
     }
 }
 
-# Read the last $lineCount lines from the log file efficiently
+# Read the last $lineCount lines from the log file
 $lastLines = Get-Content -Path $logFilePath -Tail $lineCount
 
 # Initialize variables
 $desiredDataField = $null
-$appErrorFound = $false
+$dataTransferredFound = $false
 
-# Process the log file to extract the desired data field
-for ($i = $lastLines.Count - 1; $i -ge 0; $i--) {
+# Process the log file to find "Data Transferred" and then "RAVN URL" after it
+for ($i = 0; $i -lt $lastLines.Count; $i++) {
     $line = $lastLines[$i]
 
-    if (-not $appErrorFound -and $line -match "Application error") {
-        # Found "Application error"
-        $appErrorIndex = $i
-        $appErrorFound = $true
+    if (-not $dataTransferredFound -and $line -match "Data Transferred") {
+        # Found "Data Transferred"
+        $dataTransferredIndex = $i
+        $dataTransferredFound = $true
         continue
     }
 
-    if ($appErrorFound -and $line -match "RAVN URL") {
-        # Found "RAVN URL" before "Application error"
+    if ($dataTransferredFound -and $line -match "RAVN URL") {
+        # Found "RAVN URL" after "Data Transferred"
         if ($i -gt 0) {
             # Get the line before "RAVN URL"
             $lineOfInterest = $lastLines[$i - 1]
@@ -67,16 +67,12 @@ if ($desiredDataField) {
     try {
         while (($docLine = $docFileReader.ReadLine()) -ne $null) {
             if (-not $found) {
-                # Extract the data field from the documents line
-                $docFields = $docLine -split '\s+'
-                if ($docFields.Count -ge 3) {
-                    $docDataField = $docFields[2]
-                    if ($docDataField -eq $desiredDataField) {
-                        $found = $true
-                        # Write the matched line to the temp file
-                        $docFileWriter.WriteLine($docLine)
-                        continue
-                    }
+                # Compare the entire line directly to the desired data field
+                if ($docLine -eq $desiredDataField) {
+                    $found = $true
+                    # Write the matched line to the temp file
+                    $docFileWriter.WriteLine($docLine)
+                    continue
                 }
                 # Do not write lines before the match
             } else {
@@ -108,64 +104,3 @@ Write-Host $message
 # Optionally, log the message to a file
 # $logOutputPath = "C:\path\to\your\output.log"
 # Add-Content -Path $logOutputPath -Value $message
-
-
-# Path to the large input file
-$inputFilePath = "C:\path\to\your\PRIO0.txt"
-
-# Number of parts to split into
-$parts = 10
-
-# Output file name prefix
-$outputFilePrefix = "PRIO0_Part"
-
-# Output directory (ensure this directory exists)
-$outputDirectory = "C:\path\to\your\output\directory"
-
-# Read the total number of lines in the input file efficiently
-$lineCount = 0
-$reader = [System.IO.StreamReader]::new($inputFilePath)
-try {
-    while ($null -ne $reader.ReadLine()) {
-        $lineCount++
-    }
-} finally {
-    $reader.Close()
-}
-
-# Calculate the number of lines per part
-$linesPerPart = [Math]::Ceiling($lineCount / $parts)
-
-# Initialize variables
-$currentPart = 1
-$currentLine = 0
-$reader = [System.IO.StreamReader]::new($inputFilePath)
-
-try {
-    while (-not $reader.EndOfStream -and $currentPart -le $parts) {
-        # Create a new output file for each part
-        $outputFilePath = Join-Path -Path $outputDirectory -ChildPath "$outputFilePrefix$currentPart.txt"
-        $writer = [System.IO.StreamWriter]::new($outputFilePath, $false)
-        try {
-            # Write lines to the output file
-            for ($i = 1; $i -le $linesPerPart; $i++) {
-                if (-not $reader.EndOfStream) {
-                    $line = $reader.ReadLine()
-                    $writer.WriteLine($line)
-                    $currentLine++
-                } else {
-                    break
-                }
-            }
-        } finally {
-            $writer.Close()
-        }
-        Write-Host "Created file: $outputFilePath with $i lines"
-        $currentPart++
-    }
-} finally {
-    $reader.Close()
-}
-
-Write-Host "Splitting complete. Total lines processed: $currentLine"
-
